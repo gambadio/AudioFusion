@@ -1,0 +1,101 @@
+##########################
+# Visual Studio / .NET
+##########################
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio Code cache directory
+.vscode/*
+# Pre VS Code 1.8.0 .vscode directory structure
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Visual Studio cache directory
+.vs/
+
+# Rider
+.idea/
+
+# Builds, packages and artifacts
+NuGet.config
+*.nupkg
+*.snupkg
+artifacts/
+packages/
+testresults/
+coveragereport/
+*.tar.gz
+*.zip
+
+# Tools
+*.DotSettings
+*.DotSettings.user
+
+# Roslyn files
+GeneratedNuGetEditorConfig.editorconfig
+
+# Resharper
+_ReSharper.*
+*.resharper
+
+# Secrets files - consider using .NET User Secrets or environment variables for sensitive data
+appsettings.Development.json
+secrets.json
+*.env
+
+##########################
+# Operating System Files
+##########################
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# Temporary files
+*.tmp
+*.bak
+*.cache
+
+##########################
+# WPF Specific
+##########################
+# Most WPF generated files are handled by the obj/
+# directory already covered. If you have specific
+# intermediary files not in obj/ you might add them here.
+
+# Example for ClickOnce (if you were to use it)
+# publish/

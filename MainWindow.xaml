@@ -1,0 +1,62 @@
+﻿<Window x:Class="AudioFusion.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:AudioFusion"
+        mc:Ignorable="d"
+        Title="AudioFusion" Height="700" Width="550"
+        WindowStartupLocation="CenterScreen"
+        Closing="Window_Closing">
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/> <!-- Logo and Title -->
+            <RowDefinition Height="Auto"/> <!-- Output Fusion GroupBox -->
+            <RowDefinition Height="Auto"/> <!-- Input Fusion GroupBox -->
+            <RowDefinition Height="*"/>    <!-- Spacer -->
+            <RowDefinition Height="Auto"/> <!-- Status Bar -->
+        </Grid.RowDefinitions>
+
+        <!-- Logo and Title -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,20">
+            <Image Source="pack://application:,,,/logo.png" Width="50" Height="50" Margin="0,0,10,0" VerticalAlignment="Center"/>
+            <TextBlock Text="AudioFusion" FontSize="28" FontWeight="Bold" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Output Fusion Section -->
+        <GroupBox Grid.Row="1" Header="Output Fusion (Mirror System Audio to Two Headsets)" FontWeight="SemiBold" Margin="0,0,0,15" Padding="10">
+            <StackPanel>
+                <TextBlock Text="System Default Output (Primary Headset):" Margin="0,0,0,2"/>
+                <TextBlock x:Name="DefaultOutputDeviceText" Text="Loading..." FontWeight="Normal" Margin="0,0,0,10" FontStyle="Italic"/>
+
+                <TextBlock Text="Select Secondary Headset Output:" Margin="0,5,0,2"/>
+                <ComboBox x:Name="SecondaryHeadsetComboBox" Margin="0,0,0,15"/>
+
+                <Button x:Name="OutputFusionButton" Content="Start Output Fusion" Height="35" Click="OutputFusionButton_Click" Padding="10,5"/>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Input Fusion Section -->
+        <GroupBox Grid.Row="2" Header="Input Fusion (Mix Two Microphones)" FontWeight="SemiBold" Margin="0,0,0,15" Padding="10">
+            <StackPanel>
+                <TextBlock Text="Select Primary Microphone:" Margin="0,5,0,2"/>
+                <ComboBox x:Name="PrimaryMicComboBox" Margin="0,0,0,10"/>
+
+                <TextBlock Text="Select Secondary Microphone:" Margin="0,5,0,2"/>
+                <ComboBox x:Name="SecondaryMicComboBox" Margin="0,0,0,10"/>
+
+                <TextBlock Text="Output Mixed Audio To:" Margin="0,5,0,2"/>
+                <ComboBox x:Name="MixedAudioOutputDeviceComboBox" Margin="0,0,0,15"/>
+
+                <Button x:Name="InputFusionButton" Content="Start Input Fusion" Height="35" Click="InputFusionButton_Click" Padding="10,5"/>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Status Bar -->
+        <StatusBar Grid.Row="4" VerticalAlignment="Bottom">
+            <StatusBarItem>
+                <TextBlock x:Name="StatusTextBlock" Text="Ready."/>
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>
