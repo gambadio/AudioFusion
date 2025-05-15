@@ -5,13 +5,16 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:AudioFusion"
         mc:Ignorable="d"
-        Title="AudioFusion" Height="700" Width="550"
-        WindowStartupLocation="CenterScreen"
-        Closing="Window_Closing">
+        Title="AudioFusion" 
+        Height="750" 
+        Width="550"
+        WindowStartupLocation="CenterScreen"  
+        Closing="Window_Closing">             <!-- Fixed: Now an attribute -->
     <Grid Margin="15">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/> <!-- Logo and Title -->
             <RowDefinition Height="Auto"/> <!-- Output Fusion GroupBox -->
+            <RowDefinition Height="Auto"/> <!-- Refresh Button -->
             <RowDefinition Height="Auto"/> <!-- Input Fusion GroupBox -->
             <RowDefinition Height="*"/>    <!-- Spacer -->
             <RowDefinition Height="Auto"/> <!-- Status Bar -->
@@ -24,7 +27,7 @@
         </StackPanel>
 
         <!-- Output Fusion Section -->
-        <GroupBox Grid.Row="1" Header="Output Fusion (Mirror System Audio to Two Headsets)" FontWeight="SemiBold" Margin="0,0,0,15" Padding="10">
+        <GroupBox Grid.Row="1" Header="Output Fusion (Mirror System Audio to Two Headsets)" FontWeight="SemiBold" Margin="0,0,0,10" Padding="10">
             <StackPanel>
                 <TextBlock Text="System Default Output (Primary Headset):" Margin="0,0,0,2"/>
                 <TextBlock x:Name="DefaultOutputDeviceText" Text="Loading..." FontWeight="Normal" Margin="0,0,0,10" FontStyle="Italic"/>
@@ -36,8 +39,11 @@
             </StackPanel>
         </GroupBox>
 
+        <!-- Refresh Button -->
+        <Button x:Name="RefreshDevicesButton" Grid.Row="2" Content="Refresh Audio Devices" Click="RefreshDevicesButton_Click" Margin="0,5,0,10" Padding="10,5" HorizontalAlignment="Center" Width="200"/>
+
         <!-- Input Fusion Section -->
-        <GroupBox Grid.Row="2" Header="Input Fusion (Mix Two Microphones)" FontWeight="SemiBold" Margin="0,0,0,15" Padding="10">
+        <GroupBox Grid.Row="3" Header="Input Fusion (Mix Two Microphones)" FontWeight="SemiBold" Margin="0,0,0,15" Padding="10">
             <StackPanel>
                 <TextBlock Text="Select Primary Microphone:" Margin="0,5,0,2"/>
                 <ComboBox x:Name="PrimaryMicComboBox" Margin="0,0,0,10"/>
@@ -53,7 +59,7 @@
         </GroupBox>
 
         <!-- Status Bar -->
-        <StatusBar Grid.Row="4" VerticalAlignment="Bottom">
+        <StatusBar Grid.Row="5" VerticalAlignment="Bottom"> <!-- Adjusted Grid.Row for StatusBar -->
             <StatusBarItem>
                 <TextBlock x:Name="StatusTextBlock" Text="Ready."/>
             </StatusBarItem>
