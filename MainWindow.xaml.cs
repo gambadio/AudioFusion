@@ -2,11 +2,13 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
-using System.Windows.Controls;  // Add this line
+using System.Windows.Controls;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 
 namespace AudioFusion
 {
@@ -17,6 +19,7 @@ namespace AudioFusion
         private List<MMDevice> _outputDevices = new List<MMDevice>();
         private List<MMDevice> _inputDevices = new List<MMDevice>();
         private MMDevice _defaultOutputDevice;
+        private MMDevice _defaultInputDevice;
         
         // Output Fusion Components
         private WasapiLoopbackCapture _audioSourceCapture;
@@ -24,18 +27,18 @@ namespace AudioFusion
         private BufferedWaveProvider _outputFusionBuffer;
         private bool _isOutputFusionRunning = false;
 
-        // Input Fusion Components
-        private WasapiCapture _primaryMicCapture;
-        private WasapiCapture _secondaryMicCapture;
-        private WasapiOut _mixedAudioPlayer;
-        private MixingSampleProvider _inputMixer;
-        private BufferedWaveProvider _primaryMicBuffer;
-        private BufferedWaveProvider _secondaryMicBuffer;
-        private bool _isInputFusionRunning = false;
+        // Microphone Switching
+        private bool _isMicSwitchingEnabled = false;
+        private MMDevice _micOne;
+        private MMDevice _micTwo;
 
         public MainWindow()
         {
             InitializeComponent();
+            
+            // Initialize slider to disabled state
+            MicSelectionSlider.IsEnabled = false;
+            
             LoadAudioDevices();
         }
 
@@ -53,13 +56,37 @@ namespace AudioFusion
                 
                 // Save selections before clearing
                 string selectedSecondaryHeadset = SecondaryHeadsetComboBox.SelectedItem?.ToString();
-                string selectedPrimaryMic = PrimaryMicComboBox.SelectedItem?.ToString();
-                string selectedSecondaryMic = SecondaryMicComboBox.SelectedItem?.ToString();
-                string selectedMixedOutput = MixedAudioOutputDeviceComboBox.SelectedItem?.ToString();
+                string selectedMicOne = MicOneComboBox.SelectedItem?.ToString();
+                string selectedMicTwo = MicTwoComboBox.SelectedItem?.ToString();
                 
                 // Get default output device
                 _defaultOutputDevice = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
                 DefaultOutputDeviceText.Text = $"{_defaultOutputDevice.FriendlyName} (System Default)";
+                
+                // Get default input device - try both roles
+                try 
+                {
+                    // Try communications role first
+                    _defaultInputDevice = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
+                }
+                catch 
+                {
+                    try
+                    {
+                        // Fall back to multimedia role
+                        _defaultInputDevice = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
+                    }
+                    catch
+                    {
+                        DefaultMicrophoneText.Text = "No default microphone found";
+                        _defaultInputDevice = null;
+                    }
+                }
+
+                if (_defaultInputDevice != null)
+                {
+                    DefaultMicrophoneText.Text = $"{_defaultInputDevice.FriendlyName} (System Default)";
+                }
                 
                 // Get output devices
                 var outputs = _deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active).ToList();
@@ -69,46 +96,43 @@ namespace AudioFusion
                 var inputs = _deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active).ToList();
                 _inputDevices.AddRange(inputs);
                 
-                // Clear and repopulate combo boxes (with ComboBox.Items.Add for better performance)
-                // SECONDARY HEADSET
-                SecondaryHeadsetComboBox.Items.Clear();
-                foreach (var device in _outputDevices)
-                {
-                    SecondaryHeadsetComboBox.Items.Add(device.FriendlyName);
-                }
+                // Clear and repopulate combo boxes
+                PopulateComboBoxes();
                 
-                // MIXED OUTPUT
-                MixedAudioOutputDeviceComboBox.Items.Clear();
-                foreach (var device in _outputDevices)
+                // Restore selections or select defaults, ensuring we pick the actual default device first
+                if (_defaultInputDevice != null)
                 {
-                    MixedAudioOutputDeviceComboBox.Items.Add(device.FriendlyName);
+                    // Find index of default device
+                    int defaultIndex = -1;
+                    for (int i = 0; i < MicOneComboBox.Items.Count; i++)
+                    {
+                        if (MicOneComboBox.Items[i].ToString() == _defaultInputDevice.FriendlyName)
+                        {
+                            defaultIndex = i;
+                            break;
+                        }
+                    }
+
+                    if (defaultIndex != -1)
+                    {
+                        MicOneComboBox.SelectedIndex = defaultIndex;
+                    }
                 }
-                
-                // PRIMARY MIC
-                PrimaryMicComboBox.Items.Clear();
-                foreach (var device in _inputDevices)
-                {
-                    PrimaryMicComboBox.Items.Add(device.FriendlyName);
-                }
-                
-                // SECONDARY MIC
-                SecondaryMicComboBox.Items.Clear();
-                foreach (var device in _inputDevices)
-                {
-                    SecondaryMicComboBox.Items.Add(device.FriendlyName);
-                }
-                
-                // Restore selections or select defaults
+
                 RestoreSelection(SecondaryHeadsetComboBox, selectedSecondaryHeadset);
-                RestoreSelection(PrimaryMicComboBox, selectedPrimaryMic);
-                RestoreSelection(SecondaryMicComboBox, selectedSecondaryMic);
-                RestoreSelection(MixedAudioOutputDeviceComboBox, selectedMixedOutput);
+                RestoreSelection(MicTwoComboBox, selectedMicTwo);
                 
-                // Ensure different secondary mic if possible
-                if (PrimaryMicComboBox.SelectedIndex == SecondaryMicComboBox.SelectedIndex && SecondaryMicComboBox.Items.Count > 1)
+                // Ensure different microphones selected
+                if (MicOneComboBox.SelectedIndex == MicTwoComboBox.SelectedIndex && MicTwoComboBox.Items.Count > 1)
                 {
-                    SecondaryMicComboBox.SelectedIndex = (PrimaryMicComboBox.SelectedIndex + 1) % SecondaryMicComboBox.Items.Count;
+                    MicTwoComboBox.SelectedIndex = (MicOneComboBox.SelectedIndex + 1) % MicTwoComboBox.Items.Count;
                 }
+                
+                // Update mic name labels
+                UpdateMicNameLabels();
+                
+                // Update slider position based on default mic
+                UpdateSliderPosition();
                 
                 StatusTextBlock.Text = "Audio devices loaded. Ready.";
                 RefreshDevicesButton.IsEnabled = true;
@@ -118,6 +142,62 @@ namespace AudioFusion
                 MessageBox.Show($"Error loading audio devices: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 StatusTextBlock.Text = "Error loading audio devices.";
             }
+        }
+
+        private void PopulateComboBoxes()
+        {
+            // SECONDARY HEADSET
+            SecondaryHeadsetComboBox.Items.Clear();
+            foreach (var device in _outputDevices)
+            {
+                SecondaryHeadsetComboBox.Items.Add(device.FriendlyName);
+            }
+            
+            // MICROPHONES
+            MicOneComboBox.Items.Clear();
+            MicTwoComboBox.Items.Clear();
+            foreach (var device in _inputDevices)
+            {
+                MicOneComboBox.Items.Add(device.FriendlyName);
+                MicTwoComboBox.Items.Add(device.FriendlyName);
+            }
+        }
+        
+        private void UpdateSliderPosition()
+        {
+            // If mic switching is disabled, don't update the slider
+            if (!_isMicSwitchingEnabled) return;
+            
+            // Update slider based on which mic is currently the default
+            if (_defaultInputDevice != null)
+            {
+                if (_micOne != null && _defaultInputDevice.ID == _micOne.ID)
+                {
+                    MicSelectionSlider.Value = 0;
+                }
+                else if (_micTwo != null && _defaultInputDevice.ID == _micTwo.ID)
+                {
+                    MicSelectionSlider.Value = 1;
+                }
+            }
+        }
+        
+        private void UpdateMicNameLabels()
+        {
+            MicOneName.Text = MicOneComboBox.SelectedItem?.ToString() ?? "None";
+            MicTwoName.Text = MicTwoComboBox.SelectedItem?.ToString() ?? "None";
+            
+            // Also update references to the actual devices
+            _micOne = FindMicDevice(MicOneComboBox.SelectedItem?.ToString());
+            _micTwo = FindMicDevice(MicTwoComboBox.SelectedItem?.ToString());
+        }
+        
+        private MMDevice FindMicDevice(string friendlyName)
+        {
+            if (string.IsNullOrEmpty(friendlyName))
+                return null;
+                
+            return _inputDevices.FirstOrDefault(d => d.FriendlyName == friendlyName);
         }
         
         private void RestoreSelection(ComboBox comboBox, string previousValue)
@@ -261,163 +341,279 @@ namespace AudioFusion
             }
         }
 
-        private void InputFusionButton_Click(object sender, RoutedEventArgs e)
+        private void MicSwitchingButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_isInputFusionRunning) StopInputFusion();
-            else StartInputFusion();
-        }
-
-        private void StartInputFusion()
-        {
-            if (PrimaryMicComboBox.SelectedIndex == -1 || SecondaryMicComboBox.SelectedIndex == -1 || MixedAudioOutputDeviceComboBox.SelectedIndex == -1)
-            {
-                MessageBox.Show("Please select all devices for input fusion.", "Selection Missing", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-            
-            // Get selected devices by name
-            string primaryMicName = PrimaryMicComboBox.SelectedItem.ToString();
-            string secondaryMicName = SecondaryMicComboBox.SelectedItem.ToString();
-            string mixedOutputName = MixedAudioOutputDeviceComboBox.SelectedItem.ToString();
-            
-            // Find the actual device objects
-            MMDevice primaryMic = _inputDevices.FirstOrDefault(d => d.FriendlyName == primaryMicName);
-            MMDevice secondaryMic = _inputDevices.FirstOrDefault(d => d.FriendlyName == secondaryMicName);
-            MMDevice mixedOutput = _outputDevices.FirstOrDefault(d => d.FriendlyName == mixedOutputName);
-            
-            if (primaryMic == null || secondaryMic == null || mixedOutput == null)
-            {
-                MessageBox.Show("One or more selected devices not found.", "Device Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-            
-            if (primaryMic.ID == secondaryMic.ID)
-            {
-                 MessageBoxResult result = MessageBox.Show("Primary and Secondary microphones are the same. Proceed?", "Confirmation", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                 if (result == MessageBoxResult.No) return;
-            }
-
             try
             {
-                var stereoMixFormat = WaveFormat.CreateIeeeFloatWaveFormat(48000, 2);
-                _inputMixer = new MixingSampleProvider(stereoMixFormat) { ReadFully = true };
-
-                // Primary mic
-                _primaryMicCapture = new WasapiCapture(primaryMic);
-                _primaryMicBuffer = new BufferedWaveProvider(_primaryMicCapture.WaveFormat)
-                { BufferDuration = TimeSpan.FromMilliseconds(100), DiscardOnBufferOverflow = true };
-                
-                // Convert to proper format
-                ISampleProvider primarySampleProvider = new WaveToSampleProvider(_primaryMicBuffer);
-                if (_primaryMicCapture.WaveFormat.SampleRate != stereoMixFormat.SampleRate)
-                    primarySampleProvider = new WdlResamplingSampleProvider(primarySampleProvider, stereoMixFormat.SampleRate);
-                if (primarySampleProvider.WaveFormat.Channels != stereoMixFormat.Channels)
-                    primarySampleProvider = primarySampleProvider.WaveFormat.Channels == 1 ? 
-                        (ISampleProvider)new MonoToStereoSampleProvider(primarySampleProvider) : 
-                        new StereoToMonoSampleProvider(primarySampleProvider);
-                
-                _inputMixer.AddMixerInput(primarySampleProvider);
-                _primaryMicCapture.DataAvailable += (s, args) => _primaryMicBuffer?.AddSamples(args.Buffer, 0, args.BytesRecorded);
-                
-                // Only add second mic if it's different (or same but user confirmed)
-                if (primaryMic.ID != secondaryMic.ID || primaryMic.ID == secondaryMic.ID)
+                if (_isMicSwitchingEnabled)
                 {
-                    _secondaryMicCapture = new WasapiCapture(secondaryMic);
-                    _secondaryMicBuffer = new BufferedWaveProvider(_secondaryMicCapture.WaveFormat)
-                    { BufferDuration = TimeSpan.FromMilliseconds(100), DiscardOnBufferOverflow = true };
-
-                    // Convert to proper format
-                    ISampleProvider secondarySampleProvider = new WaveToSampleProvider(_secondaryMicBuffer);
-                    if (_secondaryMicCapture.WaveFormat.SampleRate != stereoMixFormat.SampleRate)
-                        secondarySampleProvider = new WdlResamplingSampleProvider(secondarySampleProvider, stereoMixFormat.SampleRate);
-                    if (secondarySampleProvider.WaveFormat.Channels != stereoMixFormat.Channels)
-                        secondarySampleProvider = secondarySampleProvider.WaveFormat.Channels == 1 ? 
-                            (ISampleProvider)new MonoToStereoSampleProvider(secondarySampleProvider) : 
-                            new StereoToMonoSampleProvider(secondarySampleProvider);
+                    // Disable mic switching
+                    _isMicSwitchingEnabled = false;
+                    MicSwitchingButton.Content = "Enable Mic Switching";
+                    MicSelectionSlider.IsEnabled = false;
+                    StatusTextBlock.Text = "Microphone switching disabled.";
+                }
+                else
+                {
+                    StatusTextBlock.Text = "Initializing mic switching...";
                     
-                    _inputMixer.AddMixerInput(secondarySampleProvider);
-                    _secondaryMicCapture.DataAvailable += (s, args) => _secondaryMicBuffer?.AddSamples(args.Buffer, 0, args.BytesRecorded);
+                    // Enable mic switching
+                    if (MicOneComboBox.SelectedIndex == -1 || MicTwoComboBox.SelectedIndex == -1)
+                    {
+                        MessageBox.Show("Please select both microphones.", "Selection Missing", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+                    
+                    StatusTextBlock.Text = "Updating device references...";
+                    
+                    // Update references to devices
+                    UpdateMicNameLabels();
+                    
+                    if (_micOne == null || _micTwo == null)
+                    {
+                        MessageBox.Show("Could not find the selected microphones.", "Device Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        return;
+                    }
+                    
+                    // Log device IDs for debugging
+                    System.Diagnostics.Debug.WriteLine($"Mic One ID: {_micOne.ID}");
+                    System.Diagnostics.Debug.WriteLine($"Mic Two ID: {_micTwo.ID}");
+                    
+                    // Validate device IDs
+                    if (string.IsNullOrEmpty(_micOne.ID) || string.IsNullOrEmpty(_micTwo.ID))
+                    {
+                        MessageBox.Show("Invalid device IDs detected.", "Device Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        return;
+                    }
+
+                    StatusTextBlock.Text = "Enabling mic switching...";
+                    
+                    try
+                    {
+                        _isMicSwitchingEnabled = true;
+                        MicSwitchingButton.Content = "Disable Mic Switching";
+                        MicSelectionSlider.IsEnabled = true;
+                        
+                        // Set initial slider position based on default mic
+                        UpdateSliderPosition();
+                        
+                        // Apply initial selection based on slider position
+                        ApplyMicSelection();
+                        StatusTextBlock.Text = "Microphone switching enabled. Use the slider to select the active microphone.";
+                    }
+                    catch (Exception ex)
+                    {
+                        _isMicSwitchingEnabled = false;
+                        MicSwitchingButton.Content = "Enable Mic Switching";
+                        MicSelectionSlider.IsEnabled = false;
+                        throw new Exception($"Failed to initialize microphone switching: {ex.Message}", ex);
+                    }
                 }
-
-                // Output the mixed audio
-                _mixedAudioPlayer = new WasapiOut(mixedOutput, AudioClientShareMode.Shared, true, 100);
-                _mixedAudioPlayer.Init(_inputMixer);
-
-                // Start everything
-                _primaryMicCapture.StartRecording();
-                if (_secondaryMicCapture != null)
-                    _secondaryMicCapture.StartRecording();
-                _mixedAudioPlayer.Play();
-
-                // Update UI
-                _isInputFusionRunning = true;
-                InputFusionButton.Content = "Stop Input Fusion";
-                PrimaryMicComboBox.IsEnabled = false;
-                SecondaryMicComboBox.IsEnabled = false;
-                MixedAudioOutputDeviceComboBox.IsEnabled = false;
-                
-                string mic2Name = (_secondaryMicCapture != null) ? $" & '{secondaryMic.FriendlyName}'" : "";
-                StatusTextBlock.Text = $"Input Fusion: Mixing '{primaryMic.FriendlyName}'{mic2Name} -> '{mixedOutput.FriendlyName}'";
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error starting input fusion: {ex.Message}", "Input Fusion Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                StopInputFusion();
+                var error = $"Error: {ex.GetType().Name}\nMessage: {ex.Message}\nStack Trace: {ex.StackTrace}";
+                if (ex.InnerException != null)
+                {
+                    error += $"\n\nInner Exception: {ex.InnerException.Message}\nStack Trace: {ex.InnerException.StackTrace}";
+                }
+                
+                MessageBox.Show(error, "Error Details", MessageBoxButton.OK, MessageBoxImage.Error);
+                
+                _isMicSwitchingEnabled = false;
+                MicSwitchingButton.Content = "Enable Mic Switching";
+                MicSelectionSlider.IsEnabled = false;
+                StatusTextBlock.Text = "Failed to initialize microphone switching.";
             }
         }
-
-        private void StopInputFusion()
+        
+        private void MicComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            UpdateMicNameLabels();
+        }
+        
+        private void MicSelectionSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (!_isMicSwitchingEnabled) return;
+            
+            ApplyMicSelection();
+        }        
+        private void ApplyMicSelection()
+        {
+            if (!_isMicSwitchingEnabled) return;
+            
             try
             {
-                if (_primaryMicCapture != null)
+                StatusTextBlock.Text = "Applying microphone selection...";
+                
+                int selection = (int)Math.Round(MicSelectionSlider.Value);
+                MMDevice selectedMic = selection == 0 ? _micOne : _micTwo;
+                
+                if (selectedMic == null)
                 {
-                    _primaryMicCapture.StopRecording();
-                    _primaryMicCapture.Dispose();
-                    _primaryMicCapture = null;
+                    throw new InvalidOperationException("Selected microphone device is null");
                 }
                 
-                if (_secondaryMicCapture != null)
+                if (string.IsNullOrEmpty(selectedMic.ID))
                 {
-                    _secondaryMicCapture.StopRecording();
-                    _secondaryMicCapture.Dispose();
-                    _secondaryMicCapture = null;
+                    throw new InvalidOperationException("Selected microphone has invalid device ID");
                 }
                 
-                if (_mixedAudioPlayer != null)
+                StatusTextBlock.Text = $"Setting {selectedMic.FriendlyName} as default...";
+                
+                // Set as default for communications and multimedia using improved method
+                try
                 {
-                    _mixedAudioPlayer.Stop();
-                    _mixedAudioPlayer.Dispose();
-                    _mixedAudioPlayer = null;
+                    bool success = AudioEndpointManager.SetDefaultAudioEndpoint(selectedMic.ID, Role.Communications);
+                    if (!success)
+                    {
+                        throw new InvalidOperationException("Failed to set default communications endpoint");
+                    }
+                    
+                    success = AudioEndpointManager.SetDefaultAudioEndpoint(selectedMic.ID, Role.Multimedia);
+                    if (!success)
+                    {
+                        throw new InvalidOperationException("Failed to set default multimedia endpoint");
+                    }
+
+                    // Update default mic reference and UI
+                    _defaultInputDevice = selectedMic;
+                    DefaultMicrophoneText.Text = $"{selectedMic.FriendlyName} (System Default)";
+                    
+                    StatusTextBlock.Text = $"Default microphone set to: {selectedMic.FriendlyName}";
                 }
-                
-                _primaryMicBuffer = null;
-                _secondaryMicBuffer = null;
-                _inputMixer = null;
-                
-                _isInputFusionRunning = false;
-                InputFusionButton.Content = "Start Input Fusion";
-                PrimaryMicComboBox.IsEnabled = true;
-                SecondaryMicComboBox.IsEnabled = true;
-                MixedAudioOutputDeviceComboBox.IsEnabled = true;
-                
-                if (!StatusTextBlock.Text.Contains("Error") && !StatusTextBlock.Text.Contains("unexpectedly"))
-                    StatusTextBlock.Text = "Input fusion stopped.";
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException($"Failed to set default endpoint: {ex.Message}", ex);
+                }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error stopping input fusion: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Error setting default microphone: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                StatusTextBlock.Text = "Failed to set default microphone.";
+                throw; // Re-throw to trigger the error handling in the calling method
             }
         }
 
         private void Window_Closing(object sender, CancelEventArgs e)
         {
             StopOutputFusion();
-            StopInputFusion();
-            
-            // No AudioDeviceItem wrappers to dispose in this version
             _deviceEnumerator?.Dispose();
             _deviceEnumerator = null;
+        }
+    }
+    
+    // Improved audio endpoint management
+    public static class AudioEndpointManager
+    {
+        [ComImport, Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")]
+        private class PolicyConfigClient { }
+
+        [ComImport, Guid("F8679F50-850A-41CF-9C72-430F290290C8")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IPolicyConfig
+        {
+            [PreserveSig]
+            int GetMixFormat([MarshalAs(UnmanagedType.LPWStr)] string deviceId, out IntPtr format);
+            
+            [PreserveSig]
+            int GetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string deviceId, bool useDefaultFormat, out IntPtr format);
+            
+            [PreserveSig]
+            int ResetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string deviceId);
+            
+            [PreserveSig]
+            int SetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr format, IntPtr matchFormat);
+            
+            [PreserveSig]
+            int GetProcessingPeriod([MarshalAs(UnmanagedType.LPWStr)] string deviceId, bool useDefaultFormat, out long defaultPeriod, out long minimumPeriod);
+            
+            [PreserveSig]
+            int SetProcessingPeriod([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr processingPeriod);
+            
+            [PreserveSig]
+            int GetShareMode([MarshalAs(UnmanagedType.LPWStr)] string deviceId, out IntPtr shareMode);
+            
+            [PreserveSig]
+            int SetShareMode([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr shareMode);
+            
+            [PreserveSig]
+            int GetPropertyValue([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr propertyKey, out IntPtr propertyValue);
+            
+            [PreserveSig]
+            int SetPropertyValue([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr propertyKey, IntPtr propertyValue);
+            
+            [PreserveSig]
+            int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string deviceId, Role role);
+        }
+
+        public static bool SetDefaultAudioEndpoint(string deviceId, Role role)
+        {
+            try
+            {
+                var enumerator = new MMDeviceEnumerator();
+                var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
+                var device = devices.FirstOrDefault(d => d.ID == deviceId);
+                
+                if (device == null)
+                {
+                    MessageBox.Show($"Could not find device with ID: {deviceId}", "Device Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return false;
+                }
+
+                // Use Windows Core Audio API through NAudio
+                using (var defaultEndpoint = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, role))
+                {
+                    if (defaultEndpoint.ID == deviceId)
+                    {
+                        // Already the default device
+                        return true;
+                    }
+                }
+
+                // Verify the device is still active
+                if (device.State != DeviceState.Active)
+                {
+                    MessageBox.Show("Selected device is not active", "Device Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return false;
+                }
+
+                // Use Windows Audio Session API to set default device
+                var policyConfig = (IPolicyConfig)new PolicyConfigClient();
+                bool success = false;
+
+                try
+                {
+                    // Set default endpoint
+                    int hr = policyConfig.SetDefaultEndpoint(deviceId, role);
+                    success = hr >= 0;
+
+                    // Give Windows a moment to process the change
+                    if (success)
+                    {
+                        System.Threading.Thread.Sleep(100);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Failed to set default device: {ex.Message}");
+                    success = false;
+                }
+                finally
+                {
+                    if (policyConfig != null)
+                    {
+                        Marshal.ReleaseComObject(policyConfig);
+                    }
+                }
+
+                return success;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in SetDefaultAudioEndpoint: {ex.Message}");
+                return false;
+            }
         }
     }
 }
