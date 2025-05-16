@@ -509,6 +509,9 @@ namespace AudioFusion
         [ComImport, Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")]
         private class PolicyConfigClient { }
 
+        [ComImport, Guid("568b9108-44bf-40b4-9006-86afe5b5a620")]
+        private class PolicyConfigVista { }
+
         [ComImport, Guid("F8679F50-850A-41CF-9C72-430F290290C8")]
         [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         private interface IPolicyConfig
@@ -547,6 +550,59 @@ namespace AudioFusion
             int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string deviceId, Role role);
         }
 
+        [ComImport, Guid("00000000-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IAgileObject { }
+
+        [ComImport, Guid("568b9108-44bf-40b4-9006-86afe5b5a620")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IPolicyConfigVista
+        {
+            [PreserveSig]
+            int GetMixFormat(string deviceId, out IntPtr format);
+
+            [PreserveSig]
+            int GetDeviceFormat(string deviceId, int role, out IntPtr format);
+
+            [PreserveSig]
+            int SetDeviceFormat(string deviceId, int role, IntPtr format);
+
+            [PreserveSig]
+            int GetProcessingPeriod(string deviceId, int role, out long defaultPeriod, out long minimumPeriod);
+
+            [PreserveSig]
+            int SetProcessingPeriod(string deviceId, int role, IntPtr period);
+
+            [PreserveSig]
+            int GetShareMode(string deviceId, int role, out int shareMode);
+
+            [PreserveSig]
+            int SetShareMode(string deviceId, int role, int shareMode);
+
+            [PreserveSig]
+            int GetPropertyValue(string deviceId, int role, IntPtr propertyKey, out IntPtr propertyValue);
+
+            [PreserveSig]
+            int SetPropertyValue(string deviceId, int role, IntPtr propertyKey, IntPtr propertyValue);
+
+            [PreserveSig]
+            int SetDefaultEndpoint(string deviceId, Role role);
+
+            [PreserveSig]
+            int SetEndpointVisibility(string deviceId, int isVisible);
+        }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SendMessageTimeout(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam, int fuFlags, int uTimeout, IntPtr lpdwResult);
+
+        private const int HWND_BROADCAST = 0xffff;
+        private const int WM_SETTINGCHANGE = 0x001A;
+        private const int SMTO_ABORTIFHUNG = 0x0002;
+
+        private static void NotifyDeviceChange()
+        {
+            SendMessageTimeout((IntPtr)HWND_BROADCAST, WM_SETTINGCHANGE, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, IntPtr.Zero);
+        }
+
         public static bool SetDefaultAudioEndpoint(string deviceId, Role role)
         {
             try
@@ -561,50 +617,49 @@ namespace AudioFusion
                     return false;
                 }
 
-                // Use Windows Core Audio API through NAudio
-                using (var defaultEndpoint = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, role))
-                {
-                    if (defaultEndpoint.ID == deviceId)
-                    {
-                        // Already the default device
-                        return true;
-                    }
-                }
-
-                // Verify the device is still active
                 if (device.State != DeviceState.Active)
                 {
                     MessageBox.Show("Selected device is not active", "Device Error", MessageBoxButton.OK, MessageBoxImage.Error);
                     return false;
                 }
 
-                // Use Windows Audio Session API to set default device
-                var policyConfig = (IPolicyConfig)new PolicyConfigClient();
                 bool success = false;
-
+                
+                // Try with PolicyConfigVista first (better application support)
                 try
                 {
-                    // Set default endpoint
-                    int hr = policyConfig.SetDefaultEndpoint(deviceId, role);
+                    var policyConfigVista = (IPolicyConfigVista)new PolicyConfigVista();
+                    int hr = policyConfigVista.SetDefaultEndpoint(deviceId, role);
                     success = hr >= 0;
-
-                    // Give Windows a moment to process the change
-                    if (success)
-                    {
-                        System.Threading.Thread.Sleep(100);
-                    }
+                    Marshal.ReleaseComObject(policyConfigVista);
                 }
-                catch (Exception ex)
+                catch
                 {
-                    System.Diagnostics.Debug.WriteLine($"Failed to set default device: {ex.Message}");
-                    success = false;
-                }
-                finally
-                {
-                    if (policyConfig != null)
+                    // Fall back to regular PolicyConfig
+                    try
                     {
+                        var policyConfig = (IPolicyConfig)new PolicyConfigClient();
+                        int hr = policyConfig.SetDefaultEndpoint(deviceId, role);
+                        success = hr >= 0;
                         Marshal.ReleaseComObject(policyConfig);
                     }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Failed to set default device: {ex.Message}");
+                        success = false;
+                    }
+                }
+
+                if (success)
+                {
+                    // Give Windows a moment to process the change
+                    System.Threading.Thread.Sleep(100);
+                    
+                    // Notify all applications about the change
+                    NotifyDeviceChange();
+                    
+                    // Additional sleep to ensure notification is processed
+                    System.Threading.Thread.Sleep(100);
                 }
 
                 return success;
