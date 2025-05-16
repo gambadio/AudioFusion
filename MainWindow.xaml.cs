@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using NAudio.CoreAudioApi;
@@ -515,6 +516,58 @@ namespace AudioFusion
     // Improved audio endpoint management
     public static class AudioEndpointManager
     {
+        private enum StorageAccessMode
+        {
+            Read = 0,
+            Write = 1,
+            ReadWrite = 2
+        }
+
+        [Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IPropertyStore
+        {
+            int GetCount(out uint propertyCount);
+            int GetAt(uint propertyIndex, out PropertyKey key);
+            int GetValue(ref PropertyKey key, out PropVariant value);
+            int SetValue(ref PropertyKey key, ref PropVariant value);
+            int Commit();
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct PropertyKey
+        {
+            private Guid formatId;
+            private Int32 propertyId;
+            public PropertyKey(Guid formatId, Int32 propertyId)
+            {
+                this.formatId = formatId;
+                this.propertyId = propertyId;
+            }
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        private struct PropVariant
+        {
+            [FieldOffset(0)] private ushort valueType;
+            [FieldOffset(8)] private IntPtr pointerValue;
+            [FieldOffset(8)] private byte byteValue;
+            [FieldOffset(8)] private short shortValue;
+            [FieldOffset(8)] private int intValue;
+            [FieldOffset(8)] private long longValue;
+            [FieldOffset(8)] private float floatValue;
+            [FieldOffset(8)] private double doubleValue;
+
+            public string GetString()
+            {
+                if (valueType == (ushort)VarEnum.VT_LPWSTR && pointerValue != IntPtr.Zero)
+                {
+                    return Marshal.PtrToStringUni(pointerValue);
+                }
+                return null;
+            }
+        }
+
         [ComImport, Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")]
         private class PolicyConfigClient { }
 
@@ -607,9 +660,62 @@ namespace AudioFusion
         private const int WM_SETTINGCHANGE = 0x001A;
         private const int SMTO_ABORTIFHUNG = 0x0002;
 
+        private const uint CM_REMOVE_NO_RESTART = 0x1;
+        private const uint CR_SUCCESS = 0x0;
+
+        [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern bool SetupDiRemoveDevice(IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData);
+
+        [DllImport("cfgmgr32.dll", SetLastError = true)]
+        private static extern uint CM_Locate_DevNode(ref uint pdnDevInst, string pDeviceID, uint ulFlags);        [DllImport("cfgmgr32.dll", SetLastError = true)]
+        private static extern uint CM_Query_And_Remove_SubTree(uint dnAncestor, out int pVetoType, StringBuilder pszVetoName, uint ulNameLength, uint ulFlags);
+
+        [DllImport("cfgmgr32.dll", SetLastError = true)]
+        private static extern uint CM_Reenumerate_DevNode(uint dnInst, uint ulFlags);
+
+        private const uint PNP_VETO_MAX_LENGTH = 256;
+
         private static void NotifyDeviceChange()
         {
             SendMessageTimeout((IntPtr)HWND_BROADCAST, WM_SETTINGCHANGE, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, IntPtr.Zero);
+        }
+
+        private static bool RemoveDevice(string instanceId)
+        {
+            try
+            {
+                uint devInst = 0;
+                if (CM_Locate_DevNode(ref devInst, instanceId, 0) == CR_SUCCESS)
+                {                    StringBuilder vetoName = new StringBuilder((int)PNP_VETO_MAX_LENGTH);
+                    int vetoType;
+                    uint status = CM_Query_And_Remove_SubTree(devInst, out vetoType, vetoName, PNP_VETO_MAX_LENGTH, CM_REMOVE_NO_RESTART);
+                    return status == CR_SUCCESS;
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error removing device: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static bool RescanDevices()
+        {
+            try
+            {
+                uint devRoot = 0;
+                if (CM_Locate_DevNode(ref devRoot, null, 0) == CR_SUCCESS)
+                {
+                    return CM_Reenumerate_DevNode(devRoot, 0) == CR_SUCCESS;
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error rescanning devices: {ex.Message}");
+                return false;
+            }
         }
 
         public static bool SetDefaultAudioEndpoint(string deviceId, Role role)
@@ -715,6 +821,155 @@ namespace AudioFusion
             }
         }
 
+        [DllImport("setupapi.dll", SetLastError = true)]
+        private static extern IntPtr SetupDiGetClassDevs(ref Guid classGuid, string enumerator, IntPtr parent, int flags);
+
+        [DllImport("setupapi.dll", SetLastError = true)]
+        private static extern bool SetupDiDestroyDeviceInfoList(IntPtr deviceInfoSet);
+
+        [DllImport("setupapi.dll", SetLastError = true)]
+        private static extern bool SetupDiEnumDeviceInfo(IntPtr deviceInfoSet, int memberIndex, ref SP_DEVINFO_DATA deviceInfoData);
+
+        [DllImport("setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern bool SetupDiGetDeviceInstanceId(IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData, StringBuilder deviceInstanceId, int deviceInstanceIdSize, out int requiredSize);
+
+        [DllImport("setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern bool SetupDiGetDeviceRegistryProperty(IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData, uint property, out uint propertyRegDataType, byte[] propertyBuffer, uint propertyBufferSize, out uint requiredSize);
+
+        [DllImport("setupapi.dll", SetLastError = true)]
+        private static extern bool SetupDiSetClassInstallParams(IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData, ref SP_PROPCHANGE_PARAMS classInstallParams, int classInstallParamsSize);
+
+        [DllImport("setupapi.dll", SetLastError = true)]
+        private static extern bool SetupDiCallClassInstaller(uint installFunction, IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SP_DEVINFO_DATA
+        {
+            public uint cbSize;
+            public Guid ClassGuid;
+            public uint DevInst;
+            public IntPtr Reserved;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SP_PROPCHANGE_PARAMS
+        {
+            public SP_CLASSINSTALL_HEADER ClassInstallHeader;
+            public uint StateChange;
+            public uint Scope;
+            public uint HwProfile;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SP_CLASSINSTALL_HEADER
+        {
+            public uint cbSize;
+            public uint InstallFunction;
+        }
+
+        private const int DIGCF_PRESENT = 0x2;
+        private const uint DICS_FLAG_GLOBAL = 0x1;
+        private const uint DICS_ENABLE = 0x1;
+        private const uint DICS_DISABLE = 0x2;
+        private const uint DIF_PROPERTYCHANGE = 0x12;
+        private const uint SPDRP_HARDWAREID = 0x1;
+
+        private static bool SetDeviceState(string deviceInstanceId, bool enable)
+        {
+            try
+            {
+                Guid audioGuid = new Guid("{4d36e96c-e325-11ce-bfc1-08002be10318}"); // Audio device class GUID
+                IntPtr deviceInfoSet = SetupDiGetClassDevs(ref audioGuid, null, IntPtr.Zero, DIGCF_PRESENT);
+
+                if (deviceInfoSet == IntPtr.Zero || deviceInfoSet.ToInt64() == -1)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    SP_DEVINFO_DATA deviceInfoData = new SP_DEVINFO_DATA();
+                    deviceInfoData.cbSize = (uint)Marshal.SizeOf(deviceInfoData);
+                    
+                    for (int i = 0; SetupDiEnumDeviceInfo(deviceInfoSet, i, ref deviceInfoData); i++)
+                    {
+                        StringBuilder buffer = new StringBuilder(256);
+                        if (SetupDiGetDeviceInstanceId(deviceInfoSet, ref deviceInfoData, buffer, buffer.Capacity, out int _))
+                        {
+                            if (buffer.ToString().Equals(deviceInstanceId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                SP_PROPCHANGE_PARAMS propChangeParams = new SP_PROPCHANGE_PARAMS();
+                                propChangeParams.ClassInstallHeader.cbSize = (uint)Marshal.SizeOf(typeof(SP_CLASSINSTALL_HEADER));
+                                propChangeParams.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
+                                propChangeParams.StateChange = enable ? DICS_ENABLE : DICS_DISABLE;
+                                propChangeParams.Scope = DICS_FLAG_GLOBAL;
+                                propChangeParams.HwProfile = 0;
+
+                                if (!SetupDiSetClassInstallParams(deviceInfoSet, ref deviceInfoData, ref propChangeParams, Marshal.SizeOf(typeof(SP_PROPCHANGE_PARAMS))))
+                                {
+                                    continue;
+                                }
+
+                                if (!SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, ref deviceInfoData))
+                                {
+                                    continue;
+                                }
+
+                                return true;
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    SetupDiDestroyDeviceInfoList(deviceInfoSet);
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error setting device state: {ex.Message}");
+                return false;
+            }
+        }
+
+        public static string GetDeviceInstanceId(string deviceId)
+        {
+            try
+            {
+                var enumerator = new MMDeviceEnumerator();
+                var device = enumerator.GetDevice(deviceId);
+                
+                if (device == null)
+                    return null;
+
+                // Get device instance ID from the property store
+                string instanceId = null;
+                var propertyStorePtr = Marshal.GetComInterfaceForObject(device, typeof(IPropertyStore));
+                var propertyStore = (IPropertyStore)Marshal.GetObjectForIUnknown(propertyStorePtr);
+                
+                try
+                {
+                    var propertyKey = new PropertyKey(new Guid("{b3f8fa53-0004-438e-9003-51a46e139bfc}"), 2);
+                    propertyStore.GetValue(ref propertyKey, out PropVariant value);
+                    instanceId = value.GetString();
+                }
+                finally
+                {
+                    Marshal.ReleaseComObject(propertyStore);
+                    Marshal.Release(propertyStorePtr);
+                }
+
+                return instanceId;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting device instance ID: {ex.Message}");
+                return null;
+            }
+        }
+
         public static async Task<bool> SetDefaultAudioEndpointWithTeams(string deviceId, Role role)
         {
             bool success = SetDefaultAudioEndpoint(deviceId, role);
@@ -724,20 +979,32 @@ namespace AudioFusion
                 var enumerator = new MMDeviceEnumerator();
                 var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
                 
-                // Mute all other microphones
+                // Temporarily remove all other microphones
+                List<string> otherDeviceIds = new List<string>();
                 foreach (var device in devices)
                 {
                     if (device.ID != deviceId)
                     {
-                        SetMicrophoneState(device.ID, false);
+                        string instanceId = GetDeviceInstanceId(device.ID);
+                        if (!string.IsNullOrEmpty(instanceId))
+                        {
+                            otherDeviceIds.Add(instanceId);
+                            RemoveDevice(instanceId);
+                        }
                     }
                 }
+
+                // Wait a moment for Teams to detect the change
+                await Task.Delay(1000);
                 
-                // Unmute the selected microphone
-                SetMicrophoneState(deviceId, true);
-                
-                // Still try to update Teams UI as fallback
+                // Try to update Teams UI
                 await TeamsAudioManager.UpdateTeamsAudioDevice(deviceId, true);
+                
+                // Rescan to bring back all devices
+                RescanDevices();
+                
+                // Wait for devices to be re-enumerated
+                await Task.Delay(2000);
             }
 
             return success;
