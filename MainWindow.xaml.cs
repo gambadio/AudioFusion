@@ -9,6 +9,7 @@ using NAudio.Wave.SampleProviders;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 
 namespace AudioFusion
 {
@@ -438,7 +439,7 @@ namespace AudioFusion
             
             ApplyMicSelection();
         }        
-        private void ApplyMicSelection()
+        private async void ApplyMicSelection()
         {
             if (!_isMicSwitchingEnabled) return;
             
@@ -448,6 +449,7 @@ namespace AudioFusion
                 
                 int selection = (int)Math.Round(MicSelectionSlider.Value);
                 MMDevice selectedMic = selection == 0 ? _micOne : _micTwo;
+                MMDevice otherMic = selection == 0 ? _micTwo : _micOne;
                 
                 if (selectedMic == null)
                 {
@@ -461,16 +463,15 @@ namespace AudioFusion
                 
                 StatusTextBlock.Text = $"Setting {selectedMic.FriendlyName} as default...";
                 
-                // Set as default for communications and multimedia using improved method
                 try
                 {
-                    bool success = AudioEndpointManager.SetDefaultAudioEndpoint(selectedMic.ID, Role.Communications);
+                    bool success = await AudioEndpointManager.SetDefaultAudioEndpointWithTeams(selectedMic.ID, Role.Communications);
                     if (!success)
                     {
                         throw new InvalidOperationException("Failed to set default communications endpoint");
                     }
                     
-                    success = AudioEndpointManager.SetDefaultAudioEndpoint(selectedMic.ID, Role.Multimedia);
+                    success = await AudioEndpointManager.SetDefaultAudioEndpointWithTeams(selectedMic.ID, Role.Multimedia);
                     if (!success)
                     {
                         throw new InvalidOperationException("Failed to set default multimedia endpoint");
@@ -484,6 +485,9 @@ namespace AudioFusion
                 }
                 catch (Exception ex)
                 {
+                    // Try to restore both microphones to enabled state
+                    AudioEndpointManager.SetMicrophoneState(_micOne.ID, true);
+                    AudioEndpointManager.SetMicrophoneState(_micTwo.ID, true);
                     throw new InvalidOperationException($"Failed to set default endpoint: {ex.Message}", ex);
                 }
             }
@@ -491,7 +495,12 @@ namespace AudioFusion
             {
                 MessageBox.Show($"Error setting default microphone: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 StatusTextBlock.Text = "Failed to set default microphone.";
-                throw; // Re-throw to trigger the error handling in the calling method
+                
+                // Ensure both mics are enabled in case of error
+                if (_micOne != null) AudioEndpointManager.SetMicrophoneState(_micOne.ID, true);
+                if (_micTwo != null) AudioEndpointManager.SetMicrophoneState(_micTwo.ID, true);
+                
+                throw;
             }
         }
 
@@ -667,6 +676,158 @@ namespace AudioFusion
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error in SetDefaultAudioEndpoint: {ex.Message}");
+                return false;
+            }
+        }
+
+        public static bool SetMicrophoneState(string deviceId, bool enabled)
+        {
+            try
+            {
+                var enumerator = new MMDeviceEnumerator();
+                var device = enumerator.GetDevice(deviceId);
+                
+                if (device == null || device.State != DeviceState.Active)
+                {
+                    return false;
+                }
+
+                // Get the audio endpoint volume
+                var audioEndpointVolume = device.AudioEndpointVolume;
+                
+                if (enabled)
+                {
+                    // Enable and restore volume
+                    audioEndpointVolume.Mute = false;
+                }
+                else
+                {
+                    // Disable by muting
+                    audioEndpointVolume.Mute = true;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error setting microphone state: {ex.Message}");
+                return false;
+            }
+        }
+
+        public static async Task<bool> SetDefaultAudioEndpointWithTeams(string deviceId, Role role)
+        {
+            bool success = SetDefaultAudioEndpoint(deviceId, role);
+            
+            if (success && role == Role.Communications)
+            {
+                var enumerator = new MMDeviceEnumerator();
+                var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
+                
+                // Mute all other microphones
+                foreach (var device in devices)
+                {
+                    if (device.ID != deviceId)
+                    {
+                        SetMicrophoneState(device.ID, false);
+                    }
+                }
+                
+                // Unmute the selected microphone
+                SetMicrophoneState(deviceId, true);
+                
+                // Still try to update Teams UI as fallback
+                await TeamsAudioManager.UpdateTeamsAudioDevice(deviceId, true);
+            }
+
+            return success;
+        }
+    }
+
+    public static class TeamsAudioManager
+    {
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        private const uint WM_COMMAND = 0x0111;
+        private const int ID_FILE_SETTINGS = 0x0001;
+
+        public static async Task UpdateTeamsAudioDevice(string deviceId, bool isMicrophone)
+        {
+            try
+            {
+                // First try using Microsoft Graph API (requires user to be signed in)
+                if (await TryUpdateViaGraphApi(deviceId, isMicrophone))
+                {
+                    return;
+                }
+
+                // Fallback: Try direct Teams interaction
+                if (await TryUpdateViaTeamsUI(deviceId, isMicrophone))
+                {
+                    return;
+                }
+
+                System.Diagnostics.Debug.WriteLine("Failed to update Teams audio device settings");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error updating Teams settings: {ex.Message}");
+            }
+        }
+
+        private static async Task<bool> TryUpdateViaGraphApi(string deviceId, bool isMicrophone)
+        {
+            try
+            {
+                // Teams Graph API endpoint
+                string graphEndpoint = "https://graph.microsoft.com/v1.0/me/onlineMeetings/settings";
+                
+                // This requires Microsoft.Graph NuGet package and user authentication
+                // For now, return false to use the UI automation fallback
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static async Task<bool> TryUpdateViaTeamsUI(string deviceId, bool isMicrophone)
+        {
+            try
+            {
+                // Find Teams main window
+                IntPtr teamsWindow = FindWindow("Chrome_WidgetWin_1", null);
+                if (teamsWindow == IntPtr.Zero)
+                {
+                    // Try finding new Teams window
+                    teamsWindow = FindWindow("Microsoft.Windows.WebView2.WebView", null);
+                }
+
+                if (teamsWindow != IntPtr.Zero)
+                {
+                    // Try to force Teams to refresh its audio devices
+                    SendMessage(teamsWindow, WM_COMMAND, (IntPtr)ID_FILE_SETTINGS, IntPtr.Zero);
+                    
+                    // Give Teams time to process
+                    await Task.Delay(500);
+                    
+                    // This simulates clicking the settings button
+                    // Teams should then detect the system default device change
+                    return true;
+                }
+
+                return false;
+            }
+            catch
+            {
                 return false;
             }
         }
