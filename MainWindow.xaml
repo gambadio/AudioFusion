@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:AudioFusion"
         mc:Ignorable="d"
         Title="AudioFusion" 
-        Height="750" 
+        Height="450" 
         Width="550"
         WindowStartupLocation="CenterScreen"  
         Closing="Window_Closing">
@@ -15,7 +15,6 @@
             <RowDefinition Height="Auto"/> <!-- Logo and Title -->
             <RowDefinition Height="Auto"/> <!-- Output Fusion GroupBox -->
             <RowDefinition Height="Auto"/> <!-- Refresh Button -->
-            <RowDefinition Height="Auto"/> <!-- Mic Switching GroupBox -->
             <RowDefinition Height="*"/>    <!-- Spacer -->
             <RowDefinition Height="Auto"/> <!-- Status Bar -->
         </Grid.RowDefinitions>
@@ -42,38 +41,8 @@
         <!-- Refresh Button -->
         <Button x:Name="RefreshDevicesButton" Grid.Row="2" Content="Refresh Audio Devices" Click="RefreshDevicesButton_Click" Margin="0,5,0,10" Padding="10,5" HorizontalAlignment="Center" Width="200"/>
 
-        <!-- Microphone Switching Section -->
-        <GroupBox Grid.Row="3" Header="Microphone Switching (Choose Default Microphone)" FontWeight="SemiBold" Margin="0,0,0,15" Padding="10">
-            <StackPanel>
-                <TextBlock Text="Current System Default Microphone:" Margin="0,0,0,2"/>
-                <TextBlock x:Name="DefaultMicrophoneText" Text="Loading..." FontWeight="Normal" Margin="0,0,0,15" FontStyle="Italic"/>
-                
-                <TextBlock Text="Select Primary Microphone:" Margin="0,5,0,2"/>
-                <ComboBox x:Name="MicOneComboBox" Margin="0,0,0,10" SelectionChanged="MicComboBox_SelectionChanged"/>
-
-                <TextBlock Text="Select Secondary Microphone:" Margin="0,5,0,2"/>
-                <ComboBox x:Name="MicTwoComboBox" Margin="0,0,0,15" SelectionChanged="MicComboBox_SelectionChanged"/>
-
-                <TextBlock Text="Mic Selection:" Margin="0,5,0,5"/>
-                <Grid Margin="0,0,0,10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="MicOneName" Grid.Column="0" Text="Mic 1" VerticalAlignment="Center"/>
-                    <Slider x:Name="MicSelectionSlider" Grid.Column="1" Minimum="0" Maximum="1" Value="0" 
-                            Margin="10,0" TickFrequency="1" IsSnapToTickEnabled="True" 
-                            TickPlacement="BottomRight" ValueChanged="MicSelectionSlider_ValueChanged"/>
-                    <TextBlock x:Name="MicTwoName" Grid.Column="2" Text="Mic 2" VerticalAlignment="Center"/>
-                </Grid>
-
-                <Button x:Name="MicSwitchingButton" Content="Enable Mic Switching" Height="35" Click="MicSwitchingButton_Click" Padding="10,5"/>
-            </StackPanel>
-        </GroupBox>
-
         <!-- Status Bar -->
-        <StatusBar Grid.Row="5" VerticalAlignment="Bottom">
+        <StatusBar Grid.Row="4" VerticalAlignment="Bottom">
             <StatusBarItem>
                 <TextBlock x:Name="StatusTextBlock" Text="Ready."/>
             </StatusBarItem>
