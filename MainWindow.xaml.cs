@@ -31,6 +31,8 @@ namespace AudioFusion
             _deviceEnumerator = new MMDeviceEnumerator();
             
             LoadAudioDevices();
+
+            SecondaryVolumeSlider.ValueChanged += SecondaryVolumeSlider_ValueChanged;
         }
 
         private void DisposeAudioDevice(MMDevice device)
@@ -324,6 +326,35 @@ namespace AudioFusion
             _deviceEnumerator = null;
 
             System.Diagnostics.Debug.WriteLine("AudioFusion closed and resources released.");
+        }
+
+        private void SecondaryVolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            SetSecondaryDeviceVolume((int)e.NewValue);
+        }
+
+        private void SetSecondaryDeviceVolume(int volume)
+        {
+            try
+            {
+                if (SecondaryHeadsetComboBox.SelectedItem == null) return;
+
+                string selectedDeviceName = SecondaryHeadsetComboBox.SelectedItem.ToString();
+                MMDevice secondaryDevice = FindDeviceByName(selectedDeviceName, _outputDevices);
+
+                if (secondaryDevice != null)
+                {
+                    // Convert the volume from 0-100 scale to 0-1 scale
+                    float volumeLevel = volume / 100f;
+                    secondaryDevice.AudioEndpointVolume.MasterVolumeLevelScalar = volumeLevel;
+                    StatusTextBlock.Text = $"Secondary headset volume: {volume}%";
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusTextBlock.Text = "Error setting volume";
+                System.Diagnostics.Debug.WriteLine($"Error setting volume: {ex}");
+            }
         }
     }
 }

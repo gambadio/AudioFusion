@@ -32,7 +32,14 @@
                 <TextBlock x:Name="DefaultOutputDeviceText" Text="Loading..." FontWeight="Normal" Margin="0,0,0,10" FontStyle="Italic"/>
 
                 <TextBlock Text="Select Secondary Headset Output:" Margin="0,5,0,2"/>
-                <ComboBox x:Name="SecondaryHeadsetComboBox" Margin="0,0,0,15"/>
+                <ComboBox x:Name="SecondaryHeadsetComboBox" Margin="0,0,0,5"/>
+
+                <!-- Volume Slider for Secondary Headset -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
+                    <TextBlock Text="Volume:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <Slider x:Name="SecondaryVolumeSlider" Minimum="0" Maximum="100" Value="100" Width="150" TickFrequency="10" IsSnapToTickEnabled="True"/>
+                    <TextBlock Text="{Binding ElementName=SecondaryVolumeSlider, Path=Value, StringFormat=F0}" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                </StackPanel>
 
                 <Button x:Name="OutputFusionButton" Content="Start Output Fusion" Height="35" Click="OutputFusionButton_Click" Padding="10,5"/>
             </StackPanel>
