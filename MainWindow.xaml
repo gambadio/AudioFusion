@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:AudioFusion"
         mc:Ignorable="d"
         Title="AudioFusion" 
-        Height="450" 
+        Height="800" 
         Width="550"
         WindowStartupLocation="CenterScreen"  
         Closing="Window_Closing">
@@ -14,6 +14,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/> <!-- Logo and Title -->
             <RowDefinition Height="Auto"/> <!-- Output Fusion GroupBox -->
+            <RowDefinition Height="Auto"/> <!-- Input Fusion GroupBox -->
             <RowDefinition Height="Auto"/> <!-- Refresh Button -->
             <RowDefinition Height="*"/>    <!-- Spacer -->
             <RowDefinition Height="Auto"/> <!-- Status Bar -->
@@ -45,11 +46,24 @@
             </StackPanel>
         </GroupBox>
 
+        <!-- Input Fusion Section -->
+        <GroupBox Grid.Row="2" Header="Input Fusion (Combine Multiple Microphones)" FontWeight="SemiBold" Margin="0,0,0,10" Padding="10">
+            <StackPanel>
+                <TextBlock Text="System Default Microphone (Primary):" Margin="0,0,0,2"/>
+                <TextBlock x:Name="DefaultInputDeviceText" Text="Loading..." FontWeight="Normal" Margin="0,0,0,10" FontStyle="Italic"/>
+
+                <TextBlock Text="Select Secondary Microphone:" Margin="0,5,0,2"/>
+                <ComboBox x:Name="SecondaryMicrophoneComboBox" Margin="0,0,0,5"/>
+
+                <Button x:Name="InputFusionButton" Content="Start Input Fusion" Height="35" Click="InputFusionButton_Click" Padding="10,5"/>
+            </StackPanel>
+        </GroupBox>
+
         <!-- Refresh Button -->
-        <Button x:Name="RefreshDevicesButton" Grid.Row="2" Content="Refresh Audio Devices" Click="RefreshDevicesButton_Click" Margin="0,5,0,10" Padding="10,5" HorizontalAlignment="Center" Width="200"/>
+        <Button x:Name="RefreshDevicesButton" Grid.Row="3" Content="Refresh Audio Devices" Click="RefreshDevicesButton_Click" Margin="0,5,0,10" Padding="10,5" HorizontalAlignment="Center" Width="200"/>
 
         <!-- Status Bar -->
-        <StatusBar Grid.Row="4" VerticalAlignment="Bottom">
+        <StatusBar Grid.Row="5" VerticalAlignment="Bottom">
             <StatusBarItem>
                 <TextBlock x:Name="StatusTextBlock" Text="Ready."/>
             </StatusBarItem>
