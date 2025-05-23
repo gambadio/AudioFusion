@@ -10,10 +10,10 @@
         Width="550"
         WindowStartupLocation="CenterScreen"  
         Closing="Window_Closing">
-    <Grid Margin="15" Name="MainPanel">
-        <Grid.RowDefinitions>
+    <Grid Margin="15" Name="MainPanel">        <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/> <!-- Logo and Title -->
             <RowDefinition Height="Auto"/> <!-- Output Fusion GroupBox -->
+            <RowDefinition Height="Auto"/> <!-- Input Fusion GroupBox -->
             <RowDefinition Height="Auto"/> <!-- Refresh Button -->
             <RowDefinition Height="*"/>    <!-- Spacer -->
             <RowDefinition Height="Auto"/> <!-- Status Bar -->
@@ -23,9 +23,7 @@
         <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,20">
             <Image Source="pack://application:,,,/logo.png" Width="50" Height="50" Margin="0,0,10,0" VerticalAlignment="Center"/>
             <TextBlock Text="AudioFusion" FontSize="28" FontWeight="Bold" VerticalAlignment="Center"/>
-        </StackPanel>
-
-        <!-- Output Fusion Section -->
+        </StackPanel>        <!-- Output Fusion Section -->
         <GroupBox Grid.Row="1" Header="Output Fusion (Mirror System Audio to Two Headsets)" FontWeight="SemiBold" Margin="0,0,0,10" Padding="10">
             <StackPanel>
                 <TextBlock Text="System Default Output (Primary Headset):" Margin="0,0,0,2"/>
@@ -45,8 +43,40 @@
             </StackPanel>
         </GroupBox>
 
+        <!-- Input Fusion Section -->
+        <GroupBox Grid.Row="2" Header="Input Fusion (Mix Two Microphones for Teams)" FontWeight="SemiBold" Margin="0,0,0,10" Padding="10">
+            <StackPanel>
+                <TextBlock Text="Primary Microphone:" Margin="0,0,0,2"/>
+                <ComboBox x:Name="PrimaryMicrophoneComboBox" Margin="0,0,0,5"/>
+
+                <TextBlock Text="Secondary Microphone:" Margin="0,5,0,2"/>
+                <ComboBox x:Name="SecondaryMicrophoneComboBox" Margin="0,0,0,5"/>
+
+                <!-- Volume Controls -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,5" VerticalAlignment="Center">
+                    <TextBlock Text="Primary Volume:" VerticalAlignment="Center" Margin="0,0,5,0" Width="100"/>
+                    <Slider x:Name="PrimaryMicVolumeSlider" Minimum="0" Maximum="100" Value="100" Width="120" TickFrequency="10" IsSnapToTickEnabled="True"/>
+                    <TextBlock Text="{Binding ElementName=PrimaryMicVolumeSlider, Path=Value, StringFormat=F0}" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
+                    <TextBlock Text="Secondary Volume:" VerticalAlignment="Center" Margin="0,0,5,0" Width="100"/>
+                    <Slider x:Name="SecondaryMicVolumeSlider" Minimum="0" Maximum="100" Value="100" Width="120" TickFrequency="10" IsSnapToTickEnabled="True"/>
+                    <TextBlock Text="{Binding ElementName=SecondaryMicVolumeSlider, Path=Value, StringFormat=F0}" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                </StackPanel>
+
+                <!-- Echo Monitoring -->
+                <CheckBox x:Name="EchoMonitoringCheckBox" Content="Enable Echo Monitoring (Hear yourself in headphones)" Margin="0,0,0,10"/>
+
+                <Button x:Name="InputFusionButton" Content="Start Input Fusion" Height="35" Click="InputFusionButton_Click" Padding="10,5"/>
+                
+                <TextBlock x:Name="InputFusionStatusText" Text="Select microphones and click Start to begin input fusion. Teams will see the mixed audio as your default microphone." 
+                          Margin="0,10,0,0" FontStyle="Italic" TextWrapping="Wrap" FontSize="12" Foreground="Gray"/>
+            </StackPanel>
+        </GroupBox>
+
         <!-- Refresh Button -->
-        <Button x:Name="RefreshDevicesButton" Grid.Row="2" Content="Refresh Audio Devices" Click="RefreshDevicesButton_Click" Margin="0,5,0,10" Padding="10,5" HorizontalAlignment="Center" Width="200"/>
+        <Button x:Name="RefreshDevicesButton" Grid.Row="3" Content="Refresh Audio Devices" Click="RefreshDevicesButton_Click" Margin="0,5,0,10" Padding="10,5" HorizontalAlignment="Center" Width="200"/>
 
         <!-- Status Bar -->
         <StatusBar Grid.Row="4" VerticalAlignment="Bottom">
