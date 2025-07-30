@@ -1,0 +1,1 @@
+AudioFusion is a Windows desktop application for advanced audio routing, mixing, and device fusion—ideal for streamers, musicians, and audio professionals. It enables real-time routing of multiple inputs/outputs with zero-latency processing and professional-grade control over all audio sources.
